@@ -360,54 +360,35 @@ async def process_and_deploy(update: Update, context: ContextTypes.DEFAULT_TYPE,
         async def code_progress(msg):
             await update_status(5, msg)
 
-        html_code = await code_gen.generate_website(business_text, plan, design_system, code_progress)
+        react_code = await code_gen.generate_website(business_text, plan, design_system, code_progress)
 
-        # Step 6: Deploy to Cloudflare
-        await update_status(6, "Deploying to Cloudflare Pages...")
+        # Step 6: Deploy to CodeSandbox
+        await update_status(6, "Creating CodeSandbox...")
 
-        deployer = get_deployer()
-        if not deployer.is_configured:
-            raise Exception("Cloudflare not configured")
+        from codesandbox_deployer import CodeSandboxDeployer
+        deployer = CodeSandboxDeployer()
 
-        business_name = business_info.get('business_name', 'landing-page')
-        project_name = deployer.generate_project_name(business_name)
+        business_name = business_info.get('business_name', 'Landing Page')
+        files = deployer.create_next_project(react_code, business_name)
+        deployment = await deployer.deploy(files, business_name)
 
-        deployment = await deployer.deploy(project_name, html_code)
-        project_url = deployment.get("project_url", "")
-
-        # Verify deployment
-        await update_status(6, "Verifying site is live...")
-        verifier = get_verifier()
-        verification = await verifier.wait_for_deployment(project_url, max_attempts=10, delay=3)
+        sandbox_url = deployment.get("editor_url", "")
+        preview_url = deployment.get("preview_url", "")
 
         # Send files
         await update_status(7, "Sending files...")
 
-        plan_file = io.BytesIO(plan.encode('utf-8'))
-        plan_file.name = f"{project_name}-PLAN.md"
-        await context.bot.send_document(chat_id=chat_id, document=plan_file, caption="PLAN.md")
+        react_file = io.BytesIO(react_code.encode('utf-8'))
+        react_file.name = "LandingPage.jsx"
+        await context.bot.send_document(chat_id=chat_id, document=react_file, caption="React Component")
 
-        design_file = io.BytesIO(design_system.encode('utf-8'))
-        design_file.name = f"{project_name}-DESIGN.md"
-        await context.bot.send_document(chat_id=chat_id, document=design_file, caption="DESIGN_SYSTEM.md")
-
-        html_file = io.BytesIO(html_code.encode('utf-8'))
-        html_file.name = "index.html"
-        await context.bot.send_document(chat_id=chat_id, document=html_file, caption="index.html")
-
-        # Final message
-        if verification.get("loads") and verification.get("has_content"):
-            await status_msg.edit_text(
-                f"Your Landing Page is LIVE!\n\n"
-                f"{project_url}\n\n"
-                f"Site is working. Use /start to create another."
-            )
-        else:
-            await status_msg.edit_text(
-                f"Deployed!\n\n"
-                f"{project_url}\n\n"
-                f"May take a minute to go live. Use /start to create another."
-            )
+        # Final message with links
+        await status_msg.edit_text(
+            f"React Landing Page Ready!\n\n"
+            f"Editor: {sandbox_url}\n\n"
+            f"Preview: {preview_url}\n\n"
+            f"Use /start to create another."
+        )
 
     except Exception as e:
         logger.error(f"Pipeline error: {e}")
