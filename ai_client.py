@@ -34,18 +34,20 @@ class AIClient:
     ) -> str:
         """Generate with rate limit handling."""
 
-        # Throttle requests
+        # Throttle requests (5s between calls to avoid rate limits)
         elapsed = time.time() - self.last_call
-        if elapsed < 3:
-            time.sleep(3 - elapsed)
+        if elapsed < 5:
+            time.sleep(5 - elapsed)
 
         # Truncate very long prompts
         if len(prompt) > 20000:
             prompt = prompt[:20000] + "\n\n[Content truncated for length]"
 
+        # Current Groq models (Dec 2025)
         models = [
             ("llama-3.3-70b-versatile", 4000),
-            ("gemma2-9b-it", 4000),
+            ("llama-3.1-8b-instant", 4000),
+            ("meta-llama/llama-4-scout-17b-16e-instruct", 4000),
         ]
 
         errors = []
@@ -61,7 +63,7 @@ class AIClient:
                 errors.append(f"{model}: {err}")
                 logger.warning(f"{model} failed: {err}")
                 if "429" in str(e):
-                    time.sleep(10)
+                    time.sleep(30)  # Longer wait on rate limit
                 continue
 
         raise Exception(f"All failed: {errors}")
